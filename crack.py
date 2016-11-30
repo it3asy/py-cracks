@@ -5,7 +5,7 @@ import urlparse
 import Queue
 import threading
 import socket
-import time
+import time,datetime
 import sys,os,inspect
 
 ROOT = os.path.abspath(os.path.dirname(inspect.getfile(inspect.currentframe())))
@@ -17,13 +17,15 @@ g_queue = Queue.Queue()
 g_retry = 2
 g_nogreedy = False
 g_count = 0
+g_log = '/dev/null'
 
 def load_targets(_file=None,_target=None):
 	if _target:
 		g_queue.put(_target)
 	elif file:
 		for a in [x.strip() for x in file(_file,'r')]:
-			g_queue.put(a)
+			if len(a)>4:
+				g_queue.put(a)
 	return g_queue.qsize()
 
 def load_dicts(_item=None,_dict=None):
@@ -65,9 +67,11 @@ def scan_thread(_options):
 		check_login = load_module(_module)
 		if not check_login:
 			_places = ' ' * (35 - len(_url))
-			_clear = ' ' * 40
-			sys.stdout.write('{0}  {1} [-1] {2}\n'.format(_url,_places,_clear))
+			_log = '{0}  {1} [-1]'.format(_url,_places)
+			file(g_log,'a').write(_log+'\n')
+			sys.stdout.write(_log+'\r')
 			sys.stdout.flush()
+			sys.stdout.write(' '*len(_log)+'\r')
 			continue
 
 		_dict = _options._login_dict
@@ -85,7 +89,7 @@ def scan_thread(_options):
 		_pass_list = load_dicts(_item=_options._pass,_dict=_dict)
 
 		_break = False
-		_clear = ' ' * 10
+		_break_pass  = False
 		_places = ' '
 		for u in _user_list:
 			if _break:
@@ -93,52 +97,72 @@ def scan_thread(_options):
 			for p in _pass_list:
 				if _break:
 					break
+				if _break_pass:
+					break
 				g_count = g_count + 1
 				_retry = g_retry
 				while _retry:
 					p = p.replace('%user%',u)
 					p = p.replace('%null%','')
 					_places = ' ' * (35-len(_url))
+
 					_status,_text = check_login(_url=_url,_user=u,_pass=p)
 					#import random
+					#time.sleep(random.choice([0.1,0.2,0.3,1,3,0.7,0.2,0.1]))
 					#_status = random.choice([200,400,404,400,404,400,404,400,400,404,404,404])
-					_clear = ' ' * (50-len(u+'/'+p))
+
 					if _status == 400:
 						_retry = _retry - 1
 						if _retry == 0:
-							sys.stdout.write('{0} {1}  [{4}] {5}\n'.format(_url,_places,u,p,_status,_clear))
+							_log = '{0} {1}  [{4}]'.format(_url,_places,u,p,_status)
+							file(g_log,'a').write(_log+'\n')
+							sys.stdout.write(_log+'\r')
 							sys.stdout.flush()
+							sys.stdout.write(' '*len(_log)+'\r')
 							_break = True
 						else:
-							sys.stdout.write('{0} {1}  [{4}] "{2}/{3}" {5}\r'.format(_url,_places,u,p,_status,_clear))
+							_log = '{0} {1}  [{4}] "{2}/{3}"\r'.format(_url,_places,u,p,_status)
+							sys.stdout.write(_log)
 							sys.stdout.flush()
+							sys.stdout.write(' '*len(_log)+'\r')
 							time.sleep(3)
 					else:
 						_retry = 0
 						if _status == 200:
-							sys.stdout.write('{0} {1}  [{4}] "{2}/{3}" {5}\n'.format(_url,_places,u,p,_status,_clear))
+							_log = '{0} {1}  [{4}] "{2}/{3}"'.format(_url,_places,u,p,_status)
+							file(g_log,'a').write(_log+'\n')
+							sys.stdout.write(_log+'\n')
 							sys.stdout.flush()
 							if g_nogreedy:
 								_break = True
+							_break_pass = True
 						else:
-							sys.stdout.write('{0} {1}  [{4}] "{2}/{3}" {5}\r'.format(_url,_places,u,p,_status,_clear))
+							_log = '{0} {1}  [{4}] "{2}/{3}"'.format(_url,_places,u,p,_status)
+							sys.stdout.write(_log+'\r')
 							sys.stdout.flush()
+							sys.stdout.write(' '*len(_log)+'\r')
 
 
 
 if __name__ == '__main__':
-	parser = optparse.OptionParser('usage: %prog [options] url')
+	parser = optparse.OptionParser('usage: %prog [options] url --go')
 	parser.add_option('-t', metavar = 'THREAD NUMS', dest='_threads_num', default=10, type='int', help='Number of threads. default=1')
 	parser.add_option('-m', metavar = 'MIDWARE', dest='_midware', default='', type='string', help='midware[weblogic|tomcat|jboss|...]')
 	parser.add_option('-l', metavar='LOGIN', dest='_login', default=None, type='string', help='login with LOGIN name')
 	parser.add_option('-p', metavar='PASS', dest='_pass', default=None, type='string', help='try password PASS')
 	parser.add_option('-L', metavar='FILE', dest='_login_dict', default=None, type='string', help='load several logins from FILE')
 	parser.add_option('-P', metavar='FILE', dest='_pass_dict', default=None, type='string', help='load several passwords from FILE')
+	parser.add_option('--log', metavar='FILE', dest='_log', default=None, type='string', help='log to FILE')
 	parser.add_option('--targets', metavar='FILE', dest='_targets', default=None, type='string', help='load targets from FILE')
 	parser.add_option('--nogreedy', dest='_nogreedy', action="store_true", help='defalt greedy')
 	parser.add_option('--timeout', metavar='SECOENDS', dest='_timeout', default=20, type='int', help='socket timeout')
 	parser.add_option('--go', dest='_go', action="store_true", help='defalt False')
 	(_options, _args) = parser.parse_args()
+
+	_start = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+	if _options._log:
+		g_log = _options._log
 
 	if _options._targets:
 		_tars = load_targets(_file=_options._targets)
@@ -151,7 +175,9 @@ if __name__ == '__main__':
 	if _options._timeout:
 		socket.setdefaulttimeout(_options._timeout)
 
-	print '---- %s targets -----' % (_tars)
+	_log = '\n------------%s: start, %s targets ---------------------' % (_start,_tars)
+	file(g_log,'a').write(_log+'\n')
+	print _log
 
 	if _options._go:
 		_threads = []
@@ -167,5 +193,8 @@ if __name__ == '__main__':
 		while g_queue.qsize()>0:
 			print g_queue.get()
 
-	sys.stdout.write('\r' + '----%s scans done! ----'%g_count + ' '*60+'\n')
+	_end = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+	_log = '------------%s: done, %s scans ------------------------\n'%(_end, g_count)
+	file(g_log,'a').write(_log)
+	print _log
 
