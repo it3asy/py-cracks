@@ -12,7 +12,7 @@ def _login(_url, _user='', _pass=''):
 	try:
 		ssh = paramiko.SSHClient()
 		ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-		ssh.connect(_host,_port,_user,_pass)
+		ssh.connect(_host,_port,_user,_pass,timeout=20)
 		return (200,'')
 	except paramiko.ssh_exception.AuthenticationException,e:
 		return (404,str(e))
